@@ -38,6 +38,24 @@ IBM, Google, Amazon, Microsoft, ARM Ldt вкладываются в развит
 * http://www.hometoys.com/article/2015/10/nine-open-source-home-automation-projects/32466
 
 ## SCADA
+SCADA - системы использовались в территориальнораспределенных системах управления и диспетчеризации, когда до интеренета вещей было ещё очень далеко.
+
+### [Proview](http://www.proview.se/doc/en_us/qguide_f.html)
+Одна из первых свободных SCADA. Лицензия GPL. Поддерживает Profibus DP, Modbus, и т.д. 
+Позволяет создавать softPLC на графических языках IEC 61131-3 и на ЯП общего назначения.
+
+### [ScadaBR](https://sourceforge.net/projects/scadabr/)
+Бразильская SCADA. Лицензия GPL. Языки JS, PHP, C\#, Java. Предоставляет web-API для интеграции с другим ПО.
+Доступ к запущенному приложению через web-интерфейс.
+
+### [openSCADA](http://openscada.org/)
+Часть проекта Eclipse. Язык JAva. Есть web-Интерфейс, архив, графики, скриптовый движок.
+
+### [Stantor](http://stantor.free.fr/indexp_EN.htm)
+Французская свободная SCADA. Лицензия GPL. web-Интерфейс, архив, графики, скриптовый движок. Позволяет управлять устройствами по сети и через USB.
+
+### Хотите еще?
+Тогда читайте:
 * http://linuxscada.ru/
 * http://linuxscada.info/
 * http://electronicsforu.com/resources/cool-stuff-misc/8-free-open-source-software-scada
