@@ -115,7 +115,13 @@ macchina.io предоставляет разработчику модульну
 Есть поддержка TCP/IP через uIP, свой web-сервер, следов SSL/TLS не замечено. Более подробная информация о том, 
 что поддерживается и в каком состоянии [тут](http://www.eluaproject.net/doc/v0.9/en_status.html#plat_modules).
 
-* LUA IoT              http://www.nodemcu.com/index_en.html
+### [NodeMcu](http://www.nodemcu.com)
+Плата для прототипирования на базе ESP8266 с открытой прошивкой. Язык программирования LUA. Асинхронный API в духе NdeJS.
+Есть поддержка http (клиент и сервер), e-mail, поддержки SSL/TLS нет, безопасность обеспечивается на уровне wifi.
+Пошивка лежит [тут](https://github.com/nodemcu).
+
+
+
 
 * JS ???               https://www.espruino.com/
 
