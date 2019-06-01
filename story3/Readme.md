@@ -20,6 +20,12 @@ IBM, Google, Amazon, Microsoft, ARM Ldt вкладываются в развит
 ### [Home Assistant](https://github.com/home-assistant/home-assistant)
 TODO: Добавить аннотацию!
 
+### [MajorDomo](https://github.com/sergejey/majordomo)
+TODO: Добавить аннотацию!
+
+### [ioBroker](https://github.com/ioBroker/ioBroker)
+TODO: Добавить аннотацию!
+
 ### [openHAB](http://www.openhab.org/)
 Наиболее известная и распиаренная система автоматизации зданий. Написана на JAVA, переносима, 
 поддерживает огромное количество устройств (датчиков и исполнителей) и коммуникационных протоколов.
