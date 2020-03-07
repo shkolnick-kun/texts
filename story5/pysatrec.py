@@ -9,33 +9,36 @@ import julian
 from sgp4.ext import jday
 from sgp4.earth_gravity import wgs72
 from sgp4.propagation import sgp4init
-from sgp4.model import Satrec, Satellite
+from sgp4.model import Satrec, Satellite, minutes_per_day
+from orbital.constants import earth_mu
+from scipy.optimize import root_scalar
 
 def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
                   _mo, _no_kozai, _satnum, _sat=None, _whichconst=wgs72, _opsmode='i'):
-    
+
     #Construct the satellite
     if _sat is None:
         satrec = Satellite()
     else:
         satrec = _sat
-    
+
     satrec.satnum     = _satnum
     satrec.whichconst = _whichconst
     satrec.opsmode    = _opsmode
-    
+
     dt  = julian.from_jd(_epoch, fmt='jd')
     y   = dt.year - 2000
     yjd = jday(dt.year, 1, 1, 0, 0, 0)
-    
+
+    satrec.epoch      = dt
     satrec.epochyr    = y
     satrec.epochdays  = _epoch - yjd + 1
     satrec.jdsatepoch = _epoch
-    
+
     satrec.ndot     = _ndot
     satrec.nddot    = _nddot
     satrec.bstar    = _bstar
-    
+
     satrec.inclo    = _inclo
     satrec.nodeo    = _nodeo
     satrec.ecco     = _ecco
@@ -43,7 +46,7 @@ def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
     satrec.mo       = _mo
     satrec.no_kozai = _no_kozai    
     satrec.error    = 0;
-  
+
     #  ---------------- initialize the orbit at sgp4epoch -------------------
     sgp4init(satrec.whichconst, satrec.opsmode, satrec.satnum, 
              satrec.jdsatepoch-2433281.5, satrec.bstar, satrec.ndot, 
@@ -53,40 +56,128 @@ def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
     return satrec
 
 class PySatrec(Satrec):
-    
+
     @classmethod
-    def NewSat(cls, epoch, ndot, nddot, bstar, inclo, nodeo, ecco, argpo,
+    def new_sat(cls, epoch, ndot, nddot, bstar, inclo, nodeo, ecco, argpo,
                   mo, no_kozai, satnum=0):
         self = cls()
         sat_construct(epoch, ndot, nddot, bstar, inclo, nodeo, ecco, argpo,
                   mo, no_kozai, satnum, self)
         return self
 
+    def bstar_lime(self, tsince):
+        tsince *=  minutes_per_day
+
+        demax = self.cc4 * tsince
+        demin = demax
+        
+        ul =  0.99999
+        ll = -0.99999
+        
+        if self.isimp != 1:
+            demax -= self.cc5 * (1.0 + self.sinmao)
+            demin += self.cc5 * (1.0 - self.sinmao)
+        
+        re = 1 - self.ecco
+        #e0 - demax*b < 1 <=> e0 - 1 < demax*b
+        if demax > 0:
+            #b > -(1-e0)/demax
+            ll = max(ll, -re/demax)
+        elif demax < 0:
+            #b < (1-e0)/abs(demax) == -(1-e0)/demax
+            ul = min(ul, -re/demax)
+        
+        #e0 - demin*b > 0 <=> e0 > demin*b
+        if demin > 0:
+            #b < e0/demin
+            ul = min(ul, self.ecco/demin)
+        elif demin < 0:
+            #b > -e0/abs(demin) == e0/demin
+            ll = max(ll, self.ecco/demin)
+        
+        return ll, ul
+
+    def bstar_lima(self, tsince, amin):
+
+        t = tsince * minutes_per_day / self.bstar
+
+        ao  = (earth_mu / ((self.no_unkozai/60) ** 2.0)) ** (1.0/3.0)
+        thr = (amin/ao) ** 0.5
+        
+        def lim_b(b):
+            if b < 0:
+                return max(b, -0.99999)
+            else:
+                return min(b,  0.99999)
+
+        b0 = lim_b((1.0 - thr) / (self.cc1*t))
+        
+        if self.isimp == 1 or b0 == -0.99999:
+            return b0
+        else:
+            def fb(b):
+                t1 = b * t
+                t2 = t1 * t1
+                t3 = t2 * t1
+                t4 = t3 * t1
+                v  = thr - 1.
+                v += self.cc1*t1 + self.d2*t2 + self.d3*t3 + self.d4*t4
+                return v
+
+            def fbdot(b):
+                t1 = b * t
+                t2 = t1 * t1
+                t3 = t2 * t1
+                v  = self.cc1 + 2.*self.d2*t1 + 3.*self.d3*t2 + 4.*self.d4*t3
+                return v*t
+
+            r = root_scalar(fb, fprime=fbdot, x0=b0)
+            
+            if not r.converged:
+                return -0.99999
+            else:
+                return lim_b(r.root)
+
 if __name__ == '__main__':
-    import time
     import numpy as np
+    import matplotlib.pyplot as plt
+    from sgp4.model import Satrec as PySt
     
-    #NORAD satnum: 17589
-    s = PySatrec.NewSat(2458849.5, 0, 0, 1.8188e-05, 
-                        1.23769, 5.64341, 0.0020959, 4.99355, 1.28757, 0.061648)
+    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    xs = PySt.twoline2rv(l1, l2)
     
-    fr, jd = np.modf(s.jdsatepoch + 10.3)
+    delta = float(2. * np.pi / (xs.no_kozai * 1440.))/50 #50 точек на период
+    epoch = xs.jdsatepoch      #Начало эпохи
+    fr, jd = np.modf(np.array([epoch + delta*k for k in range(int(31./delta)+ 1)]))
     
-    print(jd, fr)
-    print(s.sgp4(jd, fr))
-    print(s.sgp4(jd, fr + .001))
+    xe,xr,xv = xs.sgp4_array(jd, fr)
     
-    start = time.time()
-    r = []
-    for i in range(100000):
-        #NORAD satnum: 40485
-        s = PySatrec.NewSat(2458849.5, -5.94503e-11, 0, 0, 
-                        0.425707, 2.10165, 0.877726, 0.312501, 4.96436, 0.00124624)
-        fr, jd = np.modf(s.jdsatepoch + .001*i)
-        r.append(s.sgp4(jd, fr)[0])
-    end = time.time()
+    ys = PySatrec.new_sat(xs.jdsatepoch, xs.ndot, xs.nddot, xs.bstar, xs.inclo,
+                         xs.nodeo, xs.ecco, xs.argpo, xs.mo, xs.no_kozai)
+    ye,yr,yv = xs.sgp4_array(jd, fr)
     
-    print(end - start)
-    print(sum(r))
+    plt.plot(xr-yr)
     
-    
+#    #NORAD satnum: 17589
+#    s = PySatrec.NewSat(2458849.5, 0, 0, 1.8188e-05, 
+#                        1.23769, 5.64341, 0.0020959, 4.99355, 1.28757, 0.061648)
+#    
+#    fr, jd = np.modf(s.jdsatepoch + 10.3)
+#    
+#    print(jd, fr)
+#    print(s.sgp4(jd, fr))
+#    print(s.sgp4(jd, fr + .001))
+#    
+#    start = time.time()
+#    r = []
+#    for i in range(100000):
+#        #NORAD satnum: 40485
+#        s = PySatrec.NewSat(2458849.5, -5.94503e-11, 0, 0, 
+#                        0.425707, 2.10165, 0.877726, 0.312501, 4.96436, 0.00124624)
+#        fr, jd = np.modf(s.jdsatepoch + .001*i)
+#        r.append(s.sgp4(jd, fr)[0])
+#    end = time.time()
+#    
+#    print(end - start)
+#    print(sum(r))
