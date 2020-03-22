@@ -255,11 +255,11 @@ if __name__ == '__main__':
     
     #Generate some data
     #The Hardest one!
-    #l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
-    #l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
     #MIN(no_kozai)
-    l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
-    l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
+    #l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
+    #l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
     #MIN(bstar)
     #l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
     #l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     y = no_kozait(n, tt-tt[0]) #Нужно использовать значения no_kozait
     # Причем, во время инференса тоже! Ибо интегрирование же!
     r0 = np.array([y[0], 0,0,0,0,0,0,0,0,0])
-    r = leastsq(err_num_p, r0, args=(no_lin, tt-tt[0], y, 5), full_output=1)
+    r = leastsq(err_num, r0, args=(no_lin, tt-tt[0], y), full_output=1)
     nl = r[0]
     #plt.plot(tt, err_num(nl, no_lin, tt-tt[0], moe[:,5]), '.')
     print(nl[0] - xs.no_kozai)
@@ -300,7 +300,7 @@ if __name__ == '__main__':
     #Estimate mean anomaly
     y = moe[:,4]
     r0 = np.array([y[0], 0,0,0,0,0])
-    r = leastsq(err_ang_p, r0, args=(mot, tt-tt[0], y, 5, nl), full_output=1)
+    r = leastsq(err_ang, r0, args=(mot, tt-tt[0], y, nl), full_output=1)
     m = r[0]
     #plt.plot(tt, err_ang(m, mot, tt-tt[0], moe[:,4], nl), '.')
     print(np.fmod(mot(m, xt[0] - tt[0], nl) - xs.mo, np.pi))
@@ -308,14 +308,14 @@ if __name__ == '__main__':
     #Estimate perigee argument
     y = moe[:,3]
     r0 = np.array([y[0], 0])
-    r = leastsq(err_ang_p, r0, args=(argpot, tt-tt[0], y, 5), full_output=1)
+    r = leastsq(err_ang, r0, args=(argpot, tt-tt[0], y), full_output=1)
     argp = r[0]
     #plt.plot(tt, err_ang(argp, argpot, tt-tt[0], moe[:,3]), '.')
     print(np.fmod(argpot(argp, xt[0] - tt[0]) - xs.argpo, np.pi))
     
     y = moe[:,2]
     r0 = np.array([y[0], 0])
-    r = leastsq(err_num_p, r0, args=(eccot, tt-tt[0], y, 5), full_output=1)
+    r = leastsq(err_num, r0, args=(eccot, tt-tt[0], y), full_output=1)
     ecc = r[0]
     #plt.plot(tt, err_ang(ecc, eccot, tt-tt[0], moe[:,2]), '.')
     print(ecc[0] - xs.ecco)
