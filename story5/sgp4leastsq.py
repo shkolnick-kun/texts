@@ -176,10 +176,11 @@ def sgp4_moe_from_arrays(r, v, t, cb=None):
 #==============================================================================
 # Error functions
 # Number
-def err_num(w, ft, t, y, *args):
-    return ft(w, t, *args) - y
+def err_num(w, ft, t, y, p, *args):
 
-def err_num_p(w, ft, t, y, p, *args):
+    if 0 == p:
+        return ft(w, t, *args) - y
+
     return np.power(ft(w, t, *args) - y, 2*p + 1)
 
 #Angle
@@ -196,11 +197,12 @@ def _res_ang(a,b):
 
     return np.arctan2(sr, cr)
 
-def err_ang(w, ft, t, y, *args):
-    return _res_ang(ft(w, t, *args), y)
+def err_ang(w, ft, t, y, p, *args):
 
-def err_ang_p(w, ft, t, y, p, *args):
-    return np.power(_res_ang(ft(w, t, *args), y), 2*p+1)
+    if 0 == p:
+        return _res_ang(ft(w, t, *args), y)
+
+    return np.power(_res_ang(ft(w, t, *args), y), 2*p+1)    
 #==============================================================================
 #SGP4 MOE models
 def inclot(w, t):
@@ -238,9 +240,77 @@ def mot(w, t, n):
 def no_kozait(w, t):
     n = w[0] / np.power(1 - t * (w[1] + t * (w[2] + t * (w[3] + t * w[4]))), 3)
     return n
-
 #==============================================================================
-
+def _leastsq_wr(erf, w0_sz, args, name):
+    w0 = np.array([args[2][0]] + [0.] * (w0_sz - 1))
+    r = leastsq(erf, w0, args, full_output=1)
+    if r[4] not in (1,2,3,4):
+        print("Warning: %s fit did not converge!"%name)
+        print(r)
+    return r[0]
+#==============================================================================
+class SGP4MOERegression(object):
+    def __init__(self, pnum=1000, p=0):
+        self.wn    = None
+        self.wm    = None
+        self.wargp = None
+        self.wecc  = None
+        self.wnode = None
+        self.wincl = None
+        self.epoch = None
+        self.pnum = pnum
+        self.p = p
+        
+    def fit(self, t, m):
+        
+        p = self.p
+        
+        self.epoch = np.min(t)
+        t = t.copy();
+        t -= self.epoch
+        
+        #Fit no_kozai sgp4 model
+        self.wn = _leastsq_wr(err_num, 5, (no_kozait, t, m[:,5], 0), "no_kozai")
+        
+        #Fit no_kozai polynomial model for integration
+        nl = _leastsq_wr(err_num, 10, (no_lin, t, m[:,5], p), "no_kozai poly")
+        
+        #Fit mo model
+        self.wm = _leastsq_wr(err_ang, 6, (mot, t, m[:,4], p, nl), "mo")
+        
+        #Fit argpo model
+        self.wargp = _leastsq_wr(err_ang, 2, (argpot, t, m[:,3], p), "argpo")
+        
+        #Fit ecco model
+        self.wecc = _leastsq_wr(err_num, 2, (eccot, t, m[:,2], p), "ecco")
+        
+        #Fit nodeo model
+        self.wnode = _leastsq_wr(err_ang, 3, (nodeot, t, m[:,1], 0), "nodeo")
+        
+        #Fit ecco model
+        self.wincl = _leastsq_wr(err_num, 2, (inclot, t, m[:,0], 0), "inclo")
+        
+    def predict(self, t):
+        t = t.copy().reshape(len(t), 1)
+        no_kozai = no_kozait(self.wn, t - self.epoch)
+        
+        #Integrate no_kozai
+        start = np.min(t)
+        delta = (np.max(t) - start)/(self.pnum - 1)
+        tint  = np.array([start + delta * i for i in range(self.pnum)])
+        tint -= self.epoch
+        ny = no_kozait(self.wn, tint)
+        nl = _leastsq_wr(err_num, 10, (no_lin, tint, ny, self.p), "no_kozai poly")
+        
+        mo    =    mot(self.wm,    t - self.epoch, nl)
+        argpo = argpot(self.wargp, t - self.epoch)
+        ecco  =  eccot(self.wecc,  t - self.epoch)
+        nodeo = nodeot(self.wnode, t - self.epoch)
+        inclo = inclot(self.wincl, t - self.epoch)
+        
+        return np.concatenate((inclo, nodeo, ecco, argpo, mo, no_kozai), axis=1)
+        
+        
 #==============================================================================
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -281,71 +351,26 @@ if __name__ == '__main__':
     moe, tt = sgp4_moe_from_arrays(xr,xv,xt,cb=pb.update)
     pb.finish()
     
-    #Estimate no_kozai with linear model
-    y = moe[:,5]
-    r0 = np.array([y[0], 0,0,0,0])
-    r = leastsq(err_num, r0, args=(no_kozait, tt-tt[0], y), full_output=1)
-    n = r[0]
-    #plt.plot(tt, err_num(n, no_kozait, tt-tt[0], moe[:,5]), '.')
-    print(n[0] - xs.no_kozai)
+    est = SGP4MOERegression(p=5)
+    est.fit(tt, moe)
+    em = est.predict(tt)
+    print(em.shape)
+    print(em[0,5] - xs.no_kozai)
+    print(np.fmod(em[0,4] - xs.mo, np.pi))
+    print(np.fmod(em[0,3] - xs.argpo, np.pi))
+    print(em[0,2] - xs.ecco)
+    print(np.fmod(em[0,1] - xs.nodeo, np.pi))
+    print(em[0,0] - xs.inclo)
     
-    y = no_kozait(n, tt-tt[0]) #Нужно использовать значения no_kozait
-    # Причем, во время инференса тоже! Ибо интегрирование же!
-    r0 = np.array([y[0], 0,0,0,0,0,0,0,0,0])
-    r = leastsq(err_num, r0, args=(no_lin, tt-tt[0], y), full_output=1)
-    nl = r[0]
-    #plt.plot(tt, err_num(nl, no_lin, tt-tt[0], moe[:,5]), '.')
-    print(nl[0] - xs.no_kozai)
-    
-    #Estimate mean anomaly
-    y = moe[:,4]
-    r0 = np.array([y[0], 0,0,0,0,0])
-    r = leastsq(err_ang, r0, args=(mot, tt-tt[0], y, nl), full_output=1)
-    m = r[0]
-    #plt.plot(tt, err_ang(m, mot, tt-tt[0], moe[:,4], nl), '.')
-    print(np.fmod(mot(m, xt[0] - tt[0], nl) - xs.mo, np.pi))
-    
-    #Estimate perigee argument
-    y = moe[:,3]
-    r0 = np.array([y[0], 0])
-    r = leastsq(err_ang, r0, args=(argpot, tt-tt[0], y), full_output=1)
-    argp = r[0]
-    #plt.plot(tt, err_ang(argp, argpot, tt-tt[0], moe[:,3]), '.')
-    print(np.fmod(argpot(argp, xt[0] - tt[0]) - xs.argpo, np.pi))
-    
-    y = moe[:,2]
-    r0 = np.array([y[0], 0])
-    r = leastsq(err_num, r0, args=(eccot, tt-tt[0], y), full_output=1)
-    ecc = r[0]
-    #plt.plot(tt, err_ang(ecc, eccot, tt-tt[0], moe[:,2]), '.')
-    print(ecc[0] - xs.ecco)
-    
-    y = moe[:,1]
-    r0 = np.array([y[0], 0,0])
-    r = leastsq(err_ang, r0, args=(nodeot, tt-tt[0], y), full_output=1)
-    node = r[0]
-    #plt.plot(tt, err_ang(node, nodeot, tt-tt[0], moe[:,1]), '.')
-    print(np.fmod(nodeot(node, xt[0] - tt[0]) - xs.nodeo, np.pi))
-    
-    y = moe[:,0]
-    r0 = np.array([y[0], 0])
-    r = leastsq(err_num, r0, args=(inclot, tt-tt[0], y), full_output=1)
-    incl = r[0]
-    #plt.plot(tt, err_ang(incl, inclot, tt-tt[0], moe[:,0]), '.')
-    print(incl[0] - xs.inclo)
-    
+    #plt.plot(_res_kep(moe.T,em.T).T)
+       
+    em = est.predict(xt)
     yr = []
     yv = []
     ye = []
-    for t in xt:
-        inclo = inclot(incl, t-tt[0])
-        nodeo = nodeot(node, t-tt[0])
-        ecco = eccot(ecc, t-tt[0])
-        argpo = argpot(argp, t-tt[0])
-        mo = mot(m, t-tt[0], nl)
-        no_kozai = no_kozait(n, t-tt[0])
+    for i,t in enumerate(xt):
         
-        s = PySatrec.new_sat(t, 0, 0, 0, inclo, nodeo, ecco, argpo, mo, no_kozai)
+        s = PySatrec.new_sat(t, 0, 0, 0, *list(em[i]))
         fr, jd = np.modf(t)
         e,r,v = s.sgp4(jd, fr)
         
@@ -357,17 +382,4 @@ if __name__ == '__main__':
     yv = np.concatenate(yv, axis=1).T
         
     plt.plot(xt-xt[0], xr-yr)
-    
-    #ys = est.model
-    #ye,yr,yv = ys.sgp4_array(jd, fr)
-    
-    #print(xs.inclo    - ys.inclo)
-    #print(xs.nodeo    - ys.nodeo)
-    #print(xs.ecco     - ys.ecco)
-    #print(xs.argpo    - ys.argpo)
-    #print(xs.mo       - ys.mo)
-    #print(xs.no_kozai - ys.no_kozai)
-    #print(ys.bstar)
-    
-    #plt.plot(xt, xr - yr)
     
