@@ -4,6 +4,9 @@
 Created on Sun Mar  8 18:42:37 2020
 
 @author: anon
+
+This is licensed under an MIT license. See the readme.MD file
+for more information.
 """
 from math import fmod
 import numpy as np

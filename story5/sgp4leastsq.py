@@ -4,6 +4,9 @@
 Created on Sun Mar  8 18:42:37 2020
 
 @author: anon
+
+This is licensed under an MIT license. See the readme.MD file
+for more information.
 """
 from math import fmod
 import numpy as np
@@ -60,7 +63,7 @@ def _res_kep(a,b):
     r[_KEP_ANG] = np.arctan2(sr, cr)
     
     return r
-#==============================================================================
+#------------------------------------------------------------------------------
 def _norm_kep(_x):
     x = _x.copy()
     for i in _KEP_ANG:
@@ -68,7 +71,7 @@ def _norm_kep(_x):
         if x[i] < 0.:
             x[i] = 2.*np.pi - x[i]
     return x
-#==============================================================================
+#------------------------------------------------------------------------------
 def _eval_sat(x, _epoch, _bstar):
     try:
         # Генерируем спутник
@@ -86,25 +89,23 @@ def _eval_sat(x, _epoch, _bstar):
     
     # Возвращаем наблюдаемые значения элементов движения
     return get_kepler_elements(yr, yv), 0
-#==============================================================================
+#------------------------------------------------------------------------------
 def _eval_dif(dx, thr):
     return np.all(np.abs(dx) < thr * _EPS_TLE)
-#==============================================================================    
+#------------------------------------------------------------------------------
 # Computes SGP4 Mean Orbital Elements from state (r,v) at epoch
 # See https://apps.dtic.mil/dtic/tr/fulltext/u2/a289281.pdf
-def sgp4_moe_from_state(__r, __v, __epoch, __bstar=0, g0 = 1., eps=.5, 
+def sgp4_moe_from_kep(kep, __epoch, __bstar=0, g0 = 1., eps=.5, 
                          stop_thr=1e-0, max_iter=1000):
-    #Наблюдаемые значения
-    yo = get_kepler_elements(__r,__v)
 
     #Начальное приближение
-    x = yo.copy()
+    x = kep.copy()
 
     # Коэффициенты усиления ошибок
     gains = np.ones(x.shape, dtype=np.float) * g0
 
     # Информация о знаках невязок
-    sez = yo >= x
+    sez = kep >= x
 
     exc = 0
 
@@ -112,9 +113,9 @@ def sgp4_moe_from_state(__r, __v, __epoch, __bstar=0, g0 = 1., eps=.5,
         y, exc = _eval_sat(x, __epoch, __bstar)
         if (exc):
             break
-        
+
         # Невязки
-        e = _res_kep(yo, y)
+        e = _res_kep(kep, y)
 
         #Знаки невязок
         se = e > 0.
@@ -156,21 +157,50 @@ def sgp4_moe_from_state(__r, __v, __epoch, __bstar=0, g0 = 1., eps=.5,
     x = _norm_kep(x)
 
     return x, j, _eval_dif(dx, stop_thr), exc
+#------------------------------------------------------------------------------
+
+def sgp4_moe_from_state(__r, __v, __epoch, __bstar=0, g0 = 1., eps=.5, 
+                         stop_thr=1e-0, max_iter=1000):
+    #Наблюдаемые значения
+    _kep = get_kepler_elements(__r,__v)
+    
+    return sgp4_moe_from_kep(_kep, __epoch, __bstar, g0, eps, stop_thr, max_iter)    
 #==============================================================================
 # Computes SGP4 Mean Orbital Elements from arrays r,v,t
-def sgp4_moe_from_arrays(r, v, t, cb=None):
+def sgp4_moe_from_state_arrays(r, v, t, cb=None):
+
     xx = []
     tt = []
+
     for i, ri in enumerate(r):
         x,j,c,e = sgp4_moe_from_state(ri, v[i], t[i], max_iter=50)
-        
+
         if c:
             xx.append(x.reshape(6,1))
             tt.append(t[i])
 
         if cb:
             cb(i)
-            
+
+    return np.concatenate(xx, axis=1).T, np.array(tt)
+
+#------------------------------------------------------------------------------
+# Computes SGP4 Mean Orbital Elements from arrays r,v,t
+def sgp4_moe_from_kep_arrays(kep, t, cb=None):
+
+    xx = []
+    tt = []
+
+    for i, ki in enumerate(kep):
+        x,j,c,e = sgp4_moe_from_kep(ki, t[i], max_iter=50)
+
+        if c:
+            xx.append(x.reshape(6,1))
+            tt.append(t[i])
+
+        if cb:
+            cb(i)
+
     return np.concatenate(xx, axis=1).T, np.array(tt)
 
 #==============================================================================
@@ -183,6 +213,7 @@ def err_num(w, ft, t, y, p, *args):
 
     return np.power(ft(w, t, *args) - y, 2*p + 1)
 
+#------------------------------------------------------------------------------
 #Angle
 def _res_ang(a,b):
 
@@ -197,26 +228,32 @@ def _res_ang(a,b):
 
     return np.arctan2(sr, cr)
 
+#------------------------------------------------------------------------------
 def err_ang(w, ft, t, y, p, *args):
 
     if 0 == p:
         return _res_ang(ft(w, t, *args), y)
 
-    return np.power(_res_ang(ft(w, t, *args), y), 2*p+1)    
+    return np.power(_res_ang(ft(w, t, *args), y), 2*p+1)
+
 #==============================================================================
 #SGP4 MOE models
 def inclot(w, t):
     return w[0] + t * w[1]
 
+#------------------------------------------------------------------------------
 def nodeot(w, t):
     return w[0] + t * (w[1] + t * w[2])
 
+#------------------------------------------------------------------------------
 def eccot(w, t):
     return w[0] + w[1] * t
 
+#------------------------------------------------------------------------------
 def argpot(w, t):
     return w[0] + w[1] * t
 
+#------------------------------------------------------------------------------
 #Mean frequency for linear estimation
 def no_lin(w, t):
     n = w[9]*10
@@ -225,6 +262,7 @@ def no_lin(w, t):
         n += wi * (i+1)
     return n
 
+#------------------------------------------------------------------------------
 #Integrated meanfrequency for mean anomaly estimation
 def no_int(w, t):
     m = w[9]
@@ -233,13 +271,15 @@ def no_int(w, t):
         m += wi
     return t*m*_MPD
 
+#------------------------------------------------------------------------------
 def mot(w, t, n):
     return no_int(n, t) + w[0] - t*(w[1] + t*(w[2] + t*(w[3] + t*(w[4] + t*w[5]))))
 
-
+#------------------------------------------------------------------------------
 def no_kozait(w, t):
     n = w[0] / np.power(1 - t * (w[1] + t * (w[2] + t * (w[3] + t * w[4]))), 3)
     return n
+
 #==============================================================================
 def _leastsq_wr(erf, w0_sz, args, name):
     w0 = np.array([args[2][0]] + [0.] * (w0_sz - 1))
@@ -248,6 +288,7 @@ def _leastsq_wr(erf, w0_sz, args, name):
         print("Warning: %s fit did not converge!"%name)
         print(r)
     return r[0]
+
 #==============================================================================
 class SGP4MOERegression(object):
     def __init__(self, pnum=1000, p=0):
@@ -270,7 +311,7 @@ class SGP4MOERegression(object):
         t -= self.epoch
         
         #Fit no_kozai sgp4 model
-        self.wn = _leastsq_wr(err_num, 5, (no_kozait, t, m[:,5], 0), "no_kozai")
+        self.wn = _leastsq_wr(err_num, 5, (no_kozait, t, m[:,5], p), "no_kozai")
         
         #Fit no_kozai polynomial model for integration
         nl = _leastsq_wr(err_num, 10, (no_lin, t, m[:,5], p), "no_kozai poly")
@@ -285,18 +326,18 @@ class SGP4MOERegression(object):
         self.wecc = _leastsq_wr(err_num, 2, (eccot, t, m[:,2], p), "ecco")
         
         #Fit nodeo model
-        self.wnode = _leastsq_wr(err_ang, 3, (nodeot, t, m[:,1], 0), "nodeo")
+        self.wnode = _leastsq_wr(err_ang, 3, (nodeot, t, m[:,1], p), "nodeo")
         
         #Fit ecco model
-        self.wincl = _leastsq_wr(err_num, 2, (inclot, t, m[:,0], 0), "inclo")
+        self.wincl = _leastsq_wr(err_num, 2, (inclot, t, m[:,0], p), "inclo")
         
     def predict(self, t):
         t = t.copy().reshape(len(t), 1)
         no_kozai = no_kozait(self.wn, t - self.epoch)
         
         #Integrate no_kozai
-        start = np.min(t)
-        delta = (np.max(t) - start)/(self.pnum - 1)
+        start = min(self.epoch, np.min(t))
+        delta = (max(self.epoch, np.max(t)) - start)/(self.pnum - 1)
         tint  = np.array([start + delta * i for i in range(self.pnum)])
         tint -= self.epoch
         ny = no_kozait(self.wn, tint)
@@ -309,8 +350,32 @@ class SGP4MOERegression(object):
         inclo = inclot(self.wincl, t - self.epoch)
         
         return np.concatenate((inclo, nodeo, ecco, argpo, mo, no_kozai), axis=1)
-        
-        
+
+#==============================================================================
+def state_from_sgp4_moe(t, moe):
+    yr = []
+    yv = []
+    ye = []
+
+    for i,t in enumerate(xt):
+        s = PySatrec.new_sat(t, 0, 0, 0, *list(moe[i]))
+        fr, jd = np.modf(t)
+        e,r,v = s.sgp4(jd, fr)
+
+        ye.append(e)
+        yr.append(np.array(r).reshape(3,1))
+        yv.append(np.array(v).reshape(3,1))
+
+    yr = np.concatenate(yr, axis=1).T
+    yv = np.concatenate(yv, axis=1).T
+
+    return ye, yr, yv
+
+#==============================================================================
+def get_sat_epoch(y, d):
+    y += 2000
+    return sum(jday(y, *days2mdhms(y, d)))
+    
 #==============================================================================
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -318,10 +383,6 @@ if __name__ == '__main__':
     from sgp4.model import Satrec
     from sgp4.api import jday
     from sgp4.ext import days2mdhms
-    
-    def get_sat_epoch(y, d):
-        y += 2000
-        return sum(jday(y, *days2mdhms(y, d)))
     
     #Generate some data
     #The Hardest one!
@@ -344,42 +405,18 @@ if __name__ == '__main__':
     fr, jd = np.modf(xt)
     xe,xr,xv = xs.sgp4_array(jd, fr)
 
-    
-
     pb = bar().start(len(xt))
     pb.start()
-    moe, tt = sgp4_moe_from_arrays(xr,xv,xt,cb=pb.update)
+    moe, tt = sgp4_moe_from_state_arrays(xr,xv,xt,cb=pb.update)
     pb.finish()
     
-    est = SGP4MOERegression(p=5)
+    est = SGP4MOERegression(p=0)
     est.fit(tt, moe)
-    em = est.predict(tt)
-    print(em.shape)
-    print(em[0,5] - xs.no_kozai)
-    print(np.fmod(em[0,4] - xs.mo, np.pi))
-    print(np.fmod(em[0,3] - xs.argpo, np.pi))
-    print(em[0,2] - xs.ecco)
-    print(np.fmod(em[0,1] - xs.nodeo, np.pi))
-    print(em[0,0] - xs.inclo)
-    
+    #em = est.predict(tt)
     #plt.plot(_res_kep(moe.T,em.T).T)
        
-    em = est.predict(xt)
-    yr = []
-    yv = []
-    ye = []
-    for i,t in enumerate(xt):
-        
-        s = PySatrec.new_sat(t, 0, 0, 0, *list(em[i]))
-        fr, jd = np.modf(t)
-        e,r,v = s.sgp4(jd, fr)
-        
-        ye.append(e)
-        yr.append(np.array(r).reshape(3,1))
-        yv.append(np.array(v).reshape(3,1))
-        
-    yr = np.concatenate(yr, axis=1).T
-    yv = np.concatenate(yv, axis=1).T
+    em = est.predict(xt)    
+    ye,yr,yv = state_from_sgp4_moe(xt, em)
         
     plt.plot(xt-xt[0], xr-yr)
     

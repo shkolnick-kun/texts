@@ -4,6 +4,9 @@
 Created on Tue Mar  3 20:29:13 2020
 
 @author: anon
+
+This is licensed under an MIT license. See the readme.MD file
+for more information.
 """
 import julian
 from sgp4.ext import jday
@@ -134,7 +137,12 @@ class PySatrec(Satrec):
             r = root_scalar(fb, fprime=fbdot, x0=b0)
             
             if not r.converged:
-                return -0.99999
+                def fbddot(b):
+                    t1 = b * t
+                    t2 = t1 * t1
+                    v  = 2.*self.d2 + 6.*self.d3*t1 + 12.*self.d4*t2
+                    return v*t*t
+                return root_scalar(fbdot, fprime=fbddot, x0=0).root
             else:
                 return lim_b(r.root)
 
@@ -159,25 +167,3 @@ if __name__ == '__main__':
     
     plt.plot(xr-yr)
     
-#    #NORAD satnum: 17589
-#    s = PySatrec.NewSat(2458849.5, 0, 0, 1.8188e-05, 
-#                        1.23769, 5.64341, 0.0020959, 4.99355, 1.28757, 0.061648)
-#    
-#    fr, jd = np.modf(s.jdsatepoch + 10.3)
-#    
-#    print(jd, fr)
-#    print(s.sgp4(jd, fr))
-#    print(s.sgp4(jd, fr + .001))
-#    
-#    start = time.time()
-#    r = []
-#    for i in range(100000):
-#        #NORAD satnum: 40485
-#        s = PySatrec.NewSat(2458849.5, -5.94503e-11, 0, 0, 
-#                        0.425707, 2.10165, 0.877726, 0.312501, 4.96436, 0.00124624)
-#        fr, jd = np.modf(s.jdsatepoch + .001*i)
-#        r.append(s.sgp4(jd, fr)[0])
-#    end = time.time()
-#    
-#    print(end - start)
-#    print(sum(r))
