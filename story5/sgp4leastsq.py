@@ -106,8 +106,11 @@ def sgp4_moe_from_kep(kep, __epoch, __bstar=0, g0 = 1., eps=.5,
 
     # Информация о знаках невязок
     sez = kep >= x
+    se = sez.copy()
 
     exc = 0
+    dx  = np.zeros(x.shape, dtype=np.float)
+    e   = np.zeros(x.shape, dtype=np.float)
 
     for j in range(max_iter):
         y, exc = _eval_sat(x, __epoch, __bstar)
