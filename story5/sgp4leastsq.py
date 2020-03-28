@@ -228,6 +228,21 @@ def _res_ang(a,b):
 
     return np.arctan2(sr, cr)
 
+#State mean function
+def _mean_ang(x):
+    #Sin and Cos of angles
+    sm = np.mean(np.sin(x))
+    cm = np.mean(np.cos(x))
+    #Compute mean amgles
+    return np.arctan2(sm, cm)
+
+#State mean function
+def _mean_ang_2(x):   
+    #Compute mean amgles
+    ang = _mean_ang(x)
+    ang += 2 * np.pi * (ang < 0).astype(np.float)
+    return ang
+
 #------------------------------------------------------------------------------
 def err_ang(w, ft, t, y, p, *args):
 
@@ -238,51 +253,47 @@ def err_ang(w, ft, t, y, p, *args):
 
 #==============================================================================
 #SGP4 MOE models
-def inclot(w, t):
+#inclo, ecco, argpo
+def flin(w, t):
     return w[0] + t * w[1]
 
 #------------------------------------------------------------------------------
-def nodeot(w, t):
+#nodeo
+def fsqr(w, t):
     return w[0] + t * (w[1] + t * w[2])
 
 #------------------------------------------------------------------------------
-def eccot(w, t):
-    return w[0] + w[1] * t
-
-#------------------------------------------------------------------------------
-def argpot(w, t):
-    return w[0] + w[1] * t
-
-#------------------------------------------------------------------------------
-#Mean frequency for linear estimation
-def no_lin(w, t):
-    n = w[9]*10
-    for i,wi in reversed(list(enumerate(w[:9]))):
-        n *= t
-        n += wi * (i+1)
-    return n
-
-#------------------------------------------------------------------------------
-#Integrated meanfrequency for mean anomaly estimation
-def no_int(w, t):
-    m = w[9]
-    for i,wi in reversed(list(enumerate(w[:9]))):
-        m *= t
-        m += wi
-    return t*m*_MPD
-
-#------------------------------------------------------------------------------
-def mot(w, t, n):
-    return no_int(n, t) + w[0] - t*(w[1] + t*(w[2] + t*(w[3] + t*(w[4] + t*w[5]))))
-
-#------------------------------------------------------------------------------
+#no_kozai, mean motion
 def no_kozait(w, t):
     n = w[0] / np.power(1 - t * (w[1] + t * (w[2] + t * (w[3] + t * w[4]))), 3)
     return n
 
+#------------------------------------------------------------------------------
+# mo = n0*t + err_mo(w,t)
+    
+# error model speed 
+# w_verrmo = w_errmo[1:]
+def verr_mot(w, t):
+    e = w[4]*5
+    for i,wi in reversed(list(enumerate(w[:4]))):
+        e *= t
+        e += wi * (i+1)
+    return e
+
+#mo error model
+def err_mot(w, t):
+    e = w[4]
+    for i,wi in reversed(list(enumerate(w[:4]))):
+        e *= t
+        e += wi
+    return e
+
 #==============================================================================
-def _leastsq_wr(erf, w0_sz, args, name):
-    w0 = np.array([args[2][0]] + [0.] * (w0_sz - 1))
+def _leastsq_wr(erf, w0, args, name):
+
+    if type(w0) is int:
+        w0 = np.array([args[2][0]] + [0.] * (w0 - 1))    
+
     r = leastsq(erf, w0, args, full_output=1)
     if r[4] not in (1,2,3,4):
         print("Warning: %s fit did not converge!"%name)
@@ -306,58 +317,64 @@ class SGP4MOERegression(object):
         
         p = self.p
         
-        self.epoch = np.min(t)
+        self.epoch = t[0]
         t = t.copy();
         t -= self.epoch
         
+        dt = t[1:] - t[:-1]
+        
         #Fit no_kozai sgp4 model
         self.wn = _leastsq_wr(err_num, 5, (no_kozait, t, m[:,5], p), "no_kozai")
-        
-        #Fit no_kozai polynomial model for integration
-        nl = _leastsq_wr(err_num, 10, (no_lin, t, m[:,5], p), "no_kozai poly")
-        
-        #Fit mo model
-        self.wm = _leastsq_wr(err_ang, 6, (mot, t, m[:,4], p, nl), "mo")
-        
+              
+        #mo error model
+        n0 = self.wn[0]*_MPD
+        err_mo = _res_ang(m[:,4], np.array([n0*ti for ti in t])) #mo error
+        v = _res_ang(err_mo[1:], err_mo[:-1])/dt #mo error speed
+        # Fit mo error speed first to get a good first guess
+        w0     = np.array([err_mo[0],0,0,0,0,0])
+        w0[1:]  = _leastsq_wr(err_ang, w0[1:], (verr_mot, t[1:], v, p), "verr_mot")   
+        self.wm = _leastsq_wr(err_ang, w0,     (err_mot, t, err_mo, p), "err_mot")
+
         #Fit argpo model
-        self.wargp = _leastsq_wr(err_ang, 2, (argpot, t, m[:,3], p), "argpo")
+        argpo = m[:,3]
+        w0 = np.array([argpo[0], _mean_ang(_res_ang(argpo[1:], argpo[:-1])/dt)])
+        self.wargp = _leastsq_wr(err_ang, w0, (flin, t, argpo, p), "argpo")
         
         #Fit ecco model
-        self.wecc = _leastsq_wr(err_num, 2, (eccot, t, m[:,2], p), "ecco")
+        self.wecc  = _leastsq_wr(err_num, 2, (flin, t, m[:,2], p), "ecco")
         
         #Fit nodeo model
-        self.wnode = _leastsq_wr(err_ang, 3, (nodeot, t, m[:,1], p), "nodeo")
-        
+        nodeo = m[:,1].copy()
+        v  = _res_ang(nodeo[1:], nodeo[:-1])/dt
+        #Fit nodeo speed first to get good initial guess for nopeo
+        w0 = np.array([nodeo[0],0,0])
+        w0[1:]     = _leastsq_wr(err_ang, w0[1:], (flin, t[1:], v, p), "vnod")
+        w0[2]     /= 2
+        self.wnode = _leastsq_wr(err_ang, w0, (fsqr, t, nodeo, p), "nodeo")
+
         #Fit ecco model
-        self.wincl = _leastsq_wr(err_num, 2, (inclot, t, m[:,0], p), "inclo")
+        self.wincl = _leastsq_wr(err_num, 2, (flin, t, m[:,0], p), "inclo")
         
     def predict(self, t):
         t = t.copy().reshape(len(t), 1)
-        no_kozai = no_kozait(self.wn, t - self.epoch)
+        t -= self.epoch
         
-        #Integrate no_kozai
-        start = min(self.epoch, np.min(t))
-        delta = (max(self.epoch, np.max(t)) - start)/(self.pnum - 1)
-        tint  = np.array([start + delta * i for i in range(self.pnum)])
-        tint -= self.epoch
-        ny = no_kozait(self.wn, tint)
-        nl = _leastsq_wr(err_num, 10, (no_lin, tint, ny, self.p), "no_kozai poly")
-        
-        mo    =    mot(self.wm,    t - self.epoch, nl)
-        argpo = argpot(self.wargp, t - self.epoch)
-        ecco  =  eccot(self.wecc,  t - self.epoch)
-        nodeo = nodeot(self.wnode, t - self.epoch)
-        inclo = inclot(self.wincl, t - self.epoch)
+        no_kozai = no_kozait(self.wn, t)
+        mo = self.wn[0] * _MPD * t + err_mot(self.wm, t)
+        argpo = flin(self.wargp, t)
+        ecco  = flin(self.wecc,  t)
+        nodeo = fsqr(self.wnode, t)
+        inclo = flin(self.wincl, t)
         
         return np.concatenate((inclo, nodeo, ecco, argpo, mo, no_kozai), axis=1)
 
 #==============================================================================
-def state_from_sgp4_moe(t, moe):
+def state_from_sgp4_moe(mt, moe):
     yr = []
     yv = []
     ye = []
 
-    for i,t in enumerate(xt):
+    for i,t in enumerate(mt):
         s = PySatrec.new_sat(t, 0, 0, 0, *list(moe[i]))
         fr, jd = np.modf(t)
         e,r,v = s.sgp4(jd, fr)
@@ -401,7 +418,8 @@ if __name__ == '__main__':
     
     delta = float(2. * np.pi / (xs.no_kozai * 1440.))/50 #50 points per round
     epoch = get_sat_epoch(xs.epochyr, xs.epochdays)      #Start of epoch
-    xt = np.array([epoch + delta*k for k in range(int(31./delta)+ 1)])
+    n = int(31./delta)
+    xt = np.array([epoch + delta * k for k in range(n + 1)])
     fr, jd = np.modf(xt)
     xe,xr,xv = xs.sgp4_array(jd, fr)
 
@@ -412,11 +430,11 @@ if __name__ == '__main__':
     
     est = SGP4MOERegression(p=0)
     est.fit(tt, moe)
-    #em = est.predict(tt)
-    #plt.plot(_res_kep(moe.T,em.T).T)
+    em = est.predict(tt)
+    plt.plot(tt-tt[0], _res_kep(moe.T,em.T).T)
        
     em = est.predict(xt)    
     ye,yr,yv = state_from_sgp4_moe(xt, em)
         
-    plt.plot(xt-xt[0], xr-yr)
+    #plt.plot(xt-xt[0], xr-yr)
     
