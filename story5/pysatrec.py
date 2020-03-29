@@ -9,10 +9,15 @@ This is licensed under an MIT license. See the readme.MD file
 for more information.
 """
 import julian
+from math import exp
+
 from sgp4.ext import jday
 from sgp4.earth_gravity import wgs72
-from sgp4.propagation import sgp4init
-from sgp4.model import Satrec, Satellite, minutes_per_day
+
+
+from sgp4propagation import sgp4init
+from sgp4model import Satrec, Satellite, minutes_per_day
+
 from orbital.constants import earth_mu
 from scipy.optimize import root_scalar
 
@@ -40,15 +45,31 @@ def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
 
     satrec.ndot     = _ndot
     satrec.nddot    = _nddot
+    
+    if _bstar > .99999:
+        _bstar = .99999
+    if _bstar < -.99999:
+        _bstar = -.99999  
     satrec.bstar    = _bstar
 
     satrec.inclo    = _inclo
     satrec.nodeo    = _nodeo
+    
+    if _ecco < 1e-8:
+        _ecco = 1e-8 * exp(_ecco - 1e-8)
+
+    if _ecco > .99999999:
+        _ecco = .99999999 + 1e-8 * (1. - exp(.99999999 - _ecco))
     satrec.ecco     = _ecco
+    
     satrec.argpo    = _argpo
     satrec.mo       = _mo
+    
+    if _no_kozai < 1e-8:
+        _no_kozai = 1e-8 * exp(_no_kozai - 1e-8)
     satrec.no_kozai = _no_kozai    
     satrec.error    = 0;
+    satrec.error_message = None
 
     #  ---------------- initialize the orbit at sgp4epoch -------------------
     sgp4init(satrec.whichconst, satrec.opsmode, satrec.satnum, 
