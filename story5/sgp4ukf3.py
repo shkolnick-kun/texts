@@ -101,8 +101,7 @@ _X_STD = np.array([.000005e-9,  _AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2R
 _Z_STD = .00001
 
 class SGP4Estimator6D(object):
-    def __init__(self, r, v, t, x0=None, m=.1, Filter=None, sp=None, R=None,
-                 nmax=_MAXN, rmin=_MINR, rmax=_MAXR, ttl=_TTL, use_elim=False):
+    def __init__(self, r, v, t, x0=None, m=.1, Filter=None, sp=None, R=None):
         
         self.z = np.concatenate((r,v), axis=1)
         self.t = t
@@ -172,14 +171,14 @@ if __name__ == '__main__':
     
     #Generate some data
     #The Hardest one!
-    #l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
-    #l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
     #MIN(no_kozai)
     #l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
     #l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
-    #MAX(bstar)
-    l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
-    l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
+    #MIN(bstar)
+    #l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
+    #l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
     #MAX(no_kozai)
     #l1 = '1 44216U 19006CS  20035.07310469  .00413944  15423-5  43386-3 0  9995'
     #l2 = '2 44216  95.9131 264.4538 0065601 211.8276 147.5518 16.05814498 43974'
@@ -193,9 +192,10 @@ if __name__ == '__main__':
     print(np.unique(xe))
     
     START = 0
+    END   = len(xt)#//2 
     
     x0  = get_initial_estimate(xr[START], xv[START])
-    est = SGP4Estimator6D(xr[START:],xv[START:],xt[START:], x0=x0)
+    est = SGP4Estimator6D(xr[START:END],xv[START:END],xt[START:END], x0=x0)
 
     y = []
     def kf_cb(estimator, i, j):
@@ -204,11 +204,14 @@ if __name__ == '__main__':
         pb.update(j)
         y.append(np.linalg.norm(estimator.kf.y))
     
-    pb = bar().start(len(xt[START:]))
+    pb = bar().start(len(xt[START:END]))
     pb.start()
     est.run_one_epoch(cb=kf_cb)
-    #est.run_one_epoch(shuffle=True, cb=kf_cb)
     pb.finish()
+    #pb = bar().start(len(xt[START:END]))
+    #pb.start()
+    #est.run_one_epoch(shuffle=True, cb=kf_cb)
+    #pb.finish()
     
     ye,yr,yv = est.model.sgp4_array(jd, fr)
     print(np.unique(xe))

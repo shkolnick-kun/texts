@@ -55,18 +55,18 @@ def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
     satrec.inclo    = _inclo
     satrec.nodeo    = _nodeo
     
-    if _ecco < 1e-8:
-        _ecco = 1e-8 * exp(_ecco - 1e-8)
+    if _ecco < 1e-7:
+        _ecco = 1e-7
 
-    if _ecco > .99999999:
-        _ecco = .99999999 + 1e-8 * (1. - exp(.99999999 - _ecco))
+    if _ecco > .9999999:
+        _ecco = .9999999
     satrec.ecco     = _ecco
     
     satrec.argpo    = _argpo
     satrec.mo       = _mo
     
-    if _no_kozai < 1e-8:
-        _no_kozai = 1e-8 * exp(_no_kozai - 1e-8)
+    if _no_kozai < 1e-7:
+        _no_kozai = 1e-7
     satrec.no_kozai = _no_kozai    
     satrec.error    = 0;
     satrec.error_message = None
