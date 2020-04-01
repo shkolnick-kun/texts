@@ -5,7 +5,6 @@ Created on Sun Mar  8 18:42:37 2020
 
 @author: anon
 """
-from math import fmod
 import numpy as np
 from filterpy.kalman import UnscentedKalmanFilter, MerweScaledSigmaPoints
 from orbital.constants import earth_mu, earth_radius_equatorial
@@ -101,27 +100,20 @@ _X_STD = np.array([.000005e-9,  _AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2R
 _Z_STD = .00001
 
 class SGP4Estimator6D(object):
-    def __init__(self, r, v, t, x0=None, m=.1, Filter=None, sp=None, R=None):
-        
-        self.z = np.concatenate((r,v), axis=1)
-        self.t = t
-        
-        dt = t[1] - t[0]
+    def __init__(self, epoch=None, x0=None, m=.1, Filter=None, sp=None, R=None):
         
         if sp is None:
             sp = MerweScaledSigmaPoints(_DIMX, alpha=.01, beta=2., kappa=3-_DIMX)
 
         if Filter is None:
             Filter = UnscentedKalmanFilter
-
-        kf = Filter(dim_x=_DIMX, dim_z=_DIMZ, dt=dt, fx=sgp4_fx, hx=sgp4_hx, 
+            
+        kf = Filter(dim_x=_DIMX, dim_z=_DIMZ, dt=1, fx=sgp4_fx, hx=sgp4_hx, 
                     points=sp, residual_x=_res_sgp4, x_mean_fn=_mean_sgp4, 
                     residual_z=_res_pe)
 
-        if x0 is None:
-            kf.x = np.array([0.0]*_DIMX)
-        else:
-            kf.x = x0
+        self.epoch = epoch
+        kf.x = x0
 
         kf.Q = np.diag(_X_STD*_X_STD)
 
@@ -134,29 +126,42 @@ class SGP4Estimator6D(object):
 
         self.kf = kf
 
-    def run_one_epoch(self, shuffle=False, cb=None):
-        ii = list(range(len(self.t)))
+    def run(self, t, z, cb=None, flip=False):
+        
+        if np.any((t[1:] - t[:-1]) < 0):
+            raise ValueError('Times must be sorted in accedning order.')
+        
+        t = t.copy()
+        z = z.copy()
+        
+        if flip:
+            t = np.flip(t, axis=0)
+            z = np.flip(z, axis=0)
+        
+        if not self.epoch:
+            self.epoch = t[0]
+            
+        if self.kf.x is None:
+            def get_initial_estimate(z):
+                kep = elements_from_state_vector(z[:3]*1000, z[3:]*1000, earth_mu)
+                mo = mean_anomaly_from_true(kep.e, kep.f)
+                no_kozai = 60.0 * (earth_mu / (kep.a**3))**0.5
+                return np.array((0.0, kep.i, kep.raan, kep.e, kep.arg_pe, mo, no_kozai))
+            
+            self.kf.x = get_initial_estimate(z[0])
 
-        if shuffle:
-            np.random.shuffle(ii)
-
-        for j,i in enumerate(ii):
+        for i,t in enumerate(t):
             self.kf.predict()
-            #self.kf.x = _x_normalize(self.kf.x, self.t[0])
-            self.kf.update(self.z[i], epoch=self.t[0], current=self.t[i])
+            self.kf.update(z[i], epoch=self.epoch, current=t)
             if cb:
-                cb(self, i, j)
+                cb(self, i)
                 
     @property
     def model(self):
-        return PySatrec.new_sat(self.t[0], 0, 0, *list(self.kf.x))
+        return PySatrec.new_sat(self.epoch, 0, 0, *list(self.kf.x))
 
 #Get initial estimate of orbital elements
-def get_initial_estimate(r,v):
-    kep = elements_from_state_vector(np.array(r)*1000, np.array(v)*1000, earth_mu)
-    mo = mean_anomaly_from_true(kep.e, kep.f)
-    no_kozai = 60.0 * (earth_mu / (kep.a**3))**0.5
-    return np.array((0.0, kep.i, kep.raan, kep.e, kep.arg_pe, mo, no_kozai))
+
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
@@ -171,8 +176,8 @@ if __name__ == '__main__':
     
     #Generate some data
     #The Hardest one!
-    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
-    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    #l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    #l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
     #MIN(no_kozai)
     #l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
     #l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
@@ -180,8 +185,8 @@ if __name__ == '__main__':
     #l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
     #l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
     #MAX(no_kozai)
-    #l1 = '1 44216U 19006CS  20035.07310469  .00413944  15423-5  43386-3 0  9995'
-    #l2 = '2 44216  95.9131 264.4538 0065601 211.8276 147.5518 16.05814498 43974'
+    l1 = '1 44216U 19006CS  20035.07310469  .00413944  15423-5  43386-3 0  9995'
+    l2 = '2 44216  95.9131 264.4538 0065601 211.8276 147.5518 16.05814498 43974'
     xs = Satrec.twoline2rv(l1, l2)
     
     delta = float(2. * np.pi / (xs.no_kozai * 1440.))/50 #50 points per round
@@ -192,26 +197,28 @@ if __name__ == '__main__':
     print(np.unique(xe))
     
     START = 0
-    END   = len(xt)#//2 
+    END   = len(xt)//2
     
-    x0  = get_initial_estimate(xr[START], xv[START])
-    est = SGP4Estimator6D(xr[START:END],xv[START:END],xt[START:END], x0=x0)
+    est = SGP4Estimator6D()
+    zz = np.concatenate((xr[START:END],xv[START:END]), axis=1)
+    tt = xt[START:END]
+    
 
     y = []
-    def kf_cb(estimator, i, j):
+    def kf_cb(estimator, i):
         global y
-        #print('j:',j,'x:', estimator.kf.x)
-        pb.update(j)
+        pb.update(i)
         y.append(np.linalg.norm(estimator.kf.y))
-    
-    pb = bar().start(len(xt[START:END]))
+
+    pb = bar().start(len(tt))
     pb.start()
-    est.run_one_epoch(cb=kf_cb)
+    est.run(tt, zz, cb=kf_cb)
     pb.finish()
-    #pb = bar().start(len(xt[START:END]))
-    #pb.start()
-    #est.run_one_epoch(shuffle=True, cb=kf_cb)
-    #pb.finish()
+    
+#    pb = bar().start(len(xt[START:END]))
+#    pb.start()
+#    est.run(tt, zz, cb=kf_cb, flip=True)
+#    pb.finish()
     
     ye,yr,yv = est.model.sgp4_array(jd, fr)
     print(np.unique(xe))
