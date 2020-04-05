@@ -1701,14 +1701,18 @@ def sgp4(satrec, tsince, whichconst=None):
     mrt = 0.0
     if whichconst is None:
         whichconst = satrec.whichconst
-
+        
+    #Thresholds for Kalman filtering
+    _MINN = .5e-8
+    _MINE = .5e-7
+    _MAXE = 1. - _MINE
     """
     /* ------------------ set mathematical constants --------------- */
     // sgp4fix divisor for divide by zero check on inclination
     // the old check used 1.0 + cos(pi-1.0e-9), but then compared it to
     // 1.5 e-12, so the threshold was changed to 1.5e-12 for consistency
     """
-    temp4 =   1.5e-12;
+    temp4 = 1.5e-12;
     twopi = 2.0 * pi;
     x2o3  = 2.0 / 3.0;
     #  sgp4fix identify constants and allow alternate values
@@ -1784,8 +1788,8 @@ def sgp4(satrec, tsince, whichconst=None):
         #  sgp4fix add return
         #return false, false;
     #Fix nm for Kalman filtering
-    if nm < 1e-7:
-        nm = 1e-7 #* exp(nm - 1e-8)
+    if nm < _MINN:
+        nm = _MINN #* exp(nm - 1e-8)
 
     am = pow((satrec.xke / nm),x2o3) * tempa * tempa;
     nm = satrec.xke / pow(am, 1.5);
@@ -1802,11 +1806,11 @@ def sgp4(satrec, tsince, whichconst=None):
           #return false, false;
           
     #Fix m for Kalman filtering
-    if em < 1e-7:
-        em = 1e-7
+    if em < _MINE:
+        em = _MINE
 
-    if em > .9999999:
-        em = .9999999
+    if em > _MAXE:
+        em = _MAXE
             
 
     #  sgp4fix fix tolerance to avoid a divide by zero
@@ -1863,11 +1867,11 @@ def sgp4(satrec, tsince, whichconst=None):
             #  sgp4fix add return
             #return false, false;
         #Fix ep for kalman filtering
-        if ep < 1e-7:
-            ep = 1e-7
+        if ep < _MINE:
+            ep = _MINE
 
-        if ep > .9999999:
-            ep = .9999999
+        if ep > _MAXE:
+            ep = _MAXE
         
 
     #  -------------------- long period periodics ------------------
@@ -1877,7 +1881,7 @@ def sgp4(satrec, tsince, whichconst=None):
         cosip =  cos(xincp);
         satrec.aycof = -0.5*satrec.j3oj2*sinip;
         #  sgp4fix for divide by zero for xincp = 180 deg
-        if fabs(cosip+1.0) > 1.5e-12:
+        if fabs(cosip+1.0) > temp4:
             satrec.xlcof = -0.25 * satrec.j3oj2 * sinip * (3.0 + 5.0 * cosip) / (1.0 + cosip);
         else:
             satrec.xlcof = -0.25 * satrec.j3oj2 * sinip * (3.0 + 5.0 * cosip) / temp4;
@@ -1910,11 +1914,11 @@ def sgp4(satrec, tsince, whichconst=None):
     esine = axnl*sineo1 - aynl*coseo1;
     el2   = axnl*axnl + aynl*aynl;   
     pl    = am*(1.0-el2);
-    if el2 > .9999999:        
+    if el2 > _MAXE:        
         satrec.error_message = ('semilatus rectum {0:f} is less than zero'
                       .format(pl))
         satrec.error = 4;
-        el2 = .9999999
+        el2 = _MAXE
         pl    = am*(1.0-el2);
 
 #    if pl < 0:
