@@ -171,7 +171,7 @@ def sgp4_moe_from_kep(kep, _epoch, x0=None, _bstar=0, g0 = 1., eps=.5,
         if _eval_dif(dx, stop_thr):
             break
 
-    return x, j, _eval_dif(dx, stop_thr), exc
+    return norm_moe(x), j, _eval_dif(dx, stop_thr), exc
 #------------------------------------------------------------------------------
 
 def sgp4_moe_from_state(r, v, epoch, x0=None, bstar=0, g0 = 1., eps=.5,

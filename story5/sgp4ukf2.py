@@ -28,6 +28,15 @@ _KEP_ANG = [1,3,4]
 
 _DIMX = 13 # The number of dtate dimmentions
 _DIMZ = 6  # The number of observation dimmentions
+
+#State sdt will be machine epsilones for values in TLE
+_AEPS = .5e-4 * _D2R
+#                  inclo,   nodeo,  ecco, argpo,    mo,     no_kozai
+_X_STD = np.array([_AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2RM]+[.5e-5]*7)
+
+#Default observation std
+_Z_STD = .00001
+
 #------------------------------------------------------------------------------
 def norm_moe(x):
     """
@@ -56,8 +65,14 @@ def _res_pe(a,b):
 #------------------------------------------------------------------------------
 # State transition function
 def sgp4_fx(x, dt, **fx_args):
+    
     x[4]  += dt * (x[5] + dt * 0.5 * (x[11] + x[12]))
     x[:6] += dt * x[6:12]
+    
+    #Eccentricity must not fall too low!
+    if x[2] < _X_STD[2]:
+        x[2] = _X_STD[2]
+    
     return x
 
 #------------------------------------------------------------------------------
@@ -80,14 +95,6 @@ def sgp4_hx(x, **hx_args):
     return np.array(list(hr) + list(hv))
 
 #------------------------------------------------------------------------------
-#State sdt will be machine epsilones for values in TLE
-_AEPS = .5e-4 * _D2R
-#                  inclo,   nodeo,  ecco, argpo,     mo,     no_kozai
-_X_STD = np.array([_AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2RM]+[.5e-5]*7)
-
-#Default observation std
-_Z_STD = .00001
-
 class Sgp4MoeEstimator(object):
     def __init__(self, epoch=None, x0=None, m=.1, Filter=None, sp=None, R=None):
         
@@ -141,6 +148,12 @@ class Sgp4MoeEstimator(object):
             
             self.kf.predict(dt=dt[i])
             self.kf.update(z[i+1], epoch=ti)
+            #Partial P reset due to ecco limitation
+            if self.kf.P[2,2] <= 0:
+                self.kf.P[:,2] = 0
+                self.kf.P[2,:] = 0
+                self.kf.P[2,2] = _X_STD[2]**2
+                
             #Callback
             if cb:
                 cb(self, i)
@@ -214,11 +227,11 @@ if __name__ == '__main__':
     
     #Generate some data
     #The Hardest one!
-    #l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
-    #l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
     #MIN(no_kozai)
-    l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
-    l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
+    #l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
+    #l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
     #MIN(bstar)
     #l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
     #l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'

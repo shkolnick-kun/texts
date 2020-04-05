@@ -55,8 +55,8 @@ def sat_construct(_epoch, _ndot, _nddot, _bstar, _inclo, _nodeo, _ecco, _argpo,
     satrec.inclo    = _inclo
     satrec.nodeo    = _nodeo
     
-    if _ecco < 1e-7:
-        _ecco = 1e-7
+    if _ecco < .25e-7:
+        _ecco = .25e-7
 
     if _ecco > .9999999:
         _ecco = .9999999
