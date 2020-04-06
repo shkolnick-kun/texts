@@ -1703,8 +1703,8 @@ def sgp4(satrec, tsince, whichconst=None):
         whichconst = satrec.whichconst
         
     #Thresholds for Kalman filtering
-    _MINN = .5e-8
-    _MINE = .5e-7
+    _MINN = .5e-8 * 1440. / 2. / pi #Epsilone for no_kozai
+    _MINE = 0.#4.4e-16
     _MAXE = 1. - _MINE
     """
     /* ------------------ set mathematical constants --------------- */
@@ -1789,7 +1789,7 @@ def sgp4(satrec, tsince, whichconst=None):
         #return false, false;
     #Fix nm for Kalman filtering
     if nm < _MINN:
-        nm = _MINN #* exp(nm - 1e-8)
+        nm = _MINN
 
     am = pow((satrec.xke / nm),x2o3) * tempa * tempa;
     nm = satrec.xke / pow(am, 1.5);
@@ -1914,6 +1914,8 @@ def sgp4(satrec, tsince, whichconst=None):
     esine = axnl*sineo1 - aynl*coseo1;
     el2   = axnl*axnl + aynl*aynl;   
     pl    = am*(1.0-el2);
+    
+    #Fix el2 and pl for Kelman filtering
     if el2 > _MAXE:        
         satrec.error_message = ('semilatus rectum {0:f} is less than zero'
                       .format(pl))

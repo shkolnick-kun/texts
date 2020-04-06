@@ -21,7 +21,7 @@ _MINN = np.sqrt(earth_mu/_MAXR**3) * 60. # Lowest mean motion
 
 _D2R   = np.pi/180.      # Degrees to radians
 _MPD   = 1440.           # Minutes in day
-_XD2RM = _MPD/(2.*np.pi) # rounds/ray. -> radians/minute
+_XD2RM = _MPD/(2.*np.pi) # rounds/day. -> radians/minute
 
 #Other consants
 _KEP_ANG = [1,3,4]
@@ -70,8 +70,8 @@ def sgp4_fx(x, dt, **fx_args):
     x[:6] += dt * x[6:12]
     
     #Eccentricity must not fall too low!
-    if x[2] < _X_STD[2]:
-        x[2] = _X_STD[2]
+    if x[2] < 0.:
+        x[2] = 0.
     
     return x
 
@@ -148,11 +148,12 @@ class Sgp4MoeEstimator(object):
             
             self.kf.predict(dt=dt[i])
             self.kf.update(z[i+1], epoch=ti)
-            #Partial P reset due to ecco limitation
-            if self.kf.P[2,2] <= 0:
-                self.kf.P[:,2] = 0
-                self.kf.P[2,:] = 0
-                self.kf.P[2,2] = _X_STD[2]**2
+            #Partial P reset due to limitations
+            for j in range(6):
+                if self.kf.P[j,j] <= 0:
+                    self.kf.P[:,j] = 0
+                    self.kf.P[j,:] = 0
+                    self.kf.P[j,j] = _X_STD[i]**2
                 
             #Callback
             if cb:
@@ -258,7 +259,8 @@ if __name__ == '__main__':
     def kf_cb(estimator, i):
         global y
         pb.update(i)
-        y.append(np.linalg.norm(estimator.kf.y))
+        y.append(estimator.kf.mahalanobis)
+        #y.append(np.linalg.norm(estimator.kf.y))
 
     pb = bar().start(len(tt))
     pb.start()
