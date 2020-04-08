@@ -1704,7 +1704,7 @@ def sgp4(satrec, tsince, whichconst=None):
         
     #Thresholds for Kalman filtering
     _MINN = .5e-8 * 1440. / 2. / pi #Epsilone for no_kozai
-    _MINE = 0.#4.4e-16
+    _MINE = 4.4e-16
     _MAXE = 1. - _MINE
     """
     /* ------------------ set mathematical constants --------------- */

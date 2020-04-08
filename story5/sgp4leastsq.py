@@ -106,7 +106,7 @@ def _eval_dif(dx, thr):
     return np.all(np.abs(dx) < thr * _EPS_TLE)
 #------------------------------------------------------------------------------
 def sgp4_moe_from_kep(kep, _epoch, x0=None, _bstar=0, g0 = 1., eps=.5,
-                      stop_thr=1e-0, max_iter=1000):
+                      stop_thr=1e-0, max_iter=50):
     """
     Compute SGP4 Mean Orbital Elements (MOE) from Kepler orbital elements
     see https://apps.dtic.mil/dtic/tr/fulltext/u2/a289281.pdf
@@ -160,13 +160,16 @@ def sgp4_moe_from_kep(kep, _epoch, x0=None, _bstar=0, g0 = 1., eps=.5,
             if x[i] + dx[i] >= ul:
                 k = dx[i]/(ul - x[i])/(1. - eps)
 
-            if x[i] + dx[i] <= 0:
+            if x[i] + dx[i] <= 0 and x[i] > 0:
                 k = abs(dx[i]/x[i])/(1. - eps)
 
-            gains[i] /= k
-            dx[i]    /= k
+            if k > 0.:
+                gains[i] /= k
+                dx[i]    /= k
 
         x += dx
+        
+
 
         if _eval_dif(dx, stop_thr):
             break

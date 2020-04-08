@@ -11,6 +11,7 @@ from filterpy.common import Saver
 from orbital.constants import earth_mu, earth_radius_equatorial
 from orbital.utilities import elements_from_state_vector, mean_anomaly_from_true
 from pysatrec import PySatrec
+#from UKHF import UKHF
 
 #Default limitation values
 _TTL  = 31.         # Time to live in days  
@@ -32,10 +33,10 @@ _DIMZ = 6  # The number of observation dimmentions
 #State sdt will be machine epsilones for values in TLE
 _AEPS = .5e-4 * _D2R
 #                  inclo,   nodeo,  ecco, argpo,    mo,     no_kozai
-_X_STD = np.array([_AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2RM]+[.5e-5]*7)
+_X_STD = .5 * np.array([_AEPS,  _AEPS, .5e-7,  _AEPS, _AEPS, .5e-8*_XD2RM]+[.5e-5]*7)
 
 #Default observation std
-_Z_STD = .00001
+_Z_STD = .0001
 
 #------------------------------------------------------------------------------
 def norm_moe(x):
@@ -72,6 +73,14 @@ def sgp4_fx(x, dt, **fx_args):
     #Eccentricity must not fall too low!
     if x[2] < 0.:
         x[2] = 0.
+        x[8] = 0.
+        
+    if x[2] >= .9999999:
+        x[2] = .9999999
+        x[8] = 0.
+        
+    if x[5] < _X_STD[5]:
+        x[5] = _X_STD[5]
     
     return x
 
@@ -148,6 +157,11 @@ class Sgp4MoeEstimator(object):
             
             self.kf.predict(dt=dt[i])
             self.kf.update(z[i+1], epoch=ti)
+            
+            #unneal R
+            if i < 250:
+                self.kf.R *= .98
+            
             #Partial P reset due to limitations
             for j in range(6):
                 if self.kf.P[j,j] <= 0:
@@ -228,14 +242,14 @@ if __name__ == '__main__':
     
     #Generate some data
     #The Hardest one!
-    l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
-    l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
+    #l1 = '1 44249U 19029Q   20034.91667824  .00214009  00000-0  10093-1 0  9996'
+    #l2 = '2 44249  52.9973  93.0874 0006819 325.3043 224.0257 15.18043020  1798'
     #MIN(no_kozai)
     #l1 = '1 40485U 15011D   20034.87500000 -.00001962  00000-0  00000+0 0  9996'
     #l2 = '2 40485  24.3912 120.4159 8777261  17.9050 284.4369  0.28561606 10816'
     #MIN(bstar)
-    #l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
-    #l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
+    l1 = '1 81358U          20028.49779613 -.00005615  00000-0 -72071+0 0  9998'
+    l2 = '2 81358  62.6434  61.1979 0370276 129.5311 233.8804  9.81670356    16'
     #MAX(no_kozai)
     #l1 = '1 44216U 19006CS  20035.07310469  .00413944  15423-5  43386-3 0  9995'
     #l2 = '2 44216  95.9131 264.4538 0065601 211.8276 147.5518 16.05814498 43974'
@@ -252,6 +266,8 @@ if __name__ == '__main__':
     END   = len(xt)
     
     est = Sgp4MoeEstimator()
+    #est.kf.R *= 100
+    #est.kf.Q *= .1
     zz = np.concatenate((xr[START:END],xv[START:END]), axis=1)
     tt = xt[START:END]
     
